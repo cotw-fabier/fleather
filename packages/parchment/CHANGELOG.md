@@ -1,3 +1,12 @@
+## 1.19.0
+
+* Improve performance when handling long documents
+* Add support for indentation in blocks in Markdow codec
+
+## 1.18.0
+
+* Expose `parchment_delta` by Parchment
+
 ## 1.15.0
 
 * Add support for decoding indentation, <hr>, and <img> in HTML codec 

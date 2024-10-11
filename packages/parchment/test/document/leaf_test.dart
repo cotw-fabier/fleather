@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:parchment/parchment.dart';
-import 'package:parchment_delta/parchment_delta.dart';
 import 'package:test/test.dart';
 
 final boldStyle = ParchmentStyle().merge(ParchmentAttribute.bold);
@@ -97,8 +96,10 @@ void main() {
     test('insert in formatted node', () {
       line.retain(0, 6, boldStyle);
       expect(line.childCount, 2);
+      expect(line.children.last.offset, 6);
       line.insert(3, 'don', null);
       expect(line.childCount, 4);
+      expect(line.children.last.offset, 9);
       final b = boldStyle.toJson();
       expect(
         line.children.elementAt(0).toDelta(),

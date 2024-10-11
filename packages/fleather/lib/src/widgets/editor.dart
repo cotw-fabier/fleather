@@ -9,13 +9,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:parchment/parchment.dart';
-import 'package:parchment_delta/parchment_delta.dart';
 
 import '../../util.dart';
 import '../rendering/editor.dart';
 import '../services/clipboard_manager.dart';
 import '../services/spell_check_suggestions_toolbar.dart';
-import 'baseline_proxy.dart';
 import 'controller.dart';
 import 'cursor.dart';
 import 'editable_text_block.dart';
@@ -26,7 +24,6 @@ import 'history.dart';
 import 'keyboard_listener.dart';
 import 'link.dart';
 import 'shortcuts.dart';
-import 'single_child_scroll_view.dart';
 import 'text_line.dart';
 import 'text_selection.dart';
 import 'theme.dart';
@@ -111,9 +108,8 @@ class FleatherEditor extends StatefulWidget {
 
   /// The [ScrollController] to use when vertically scrolling the contents.
   ///
-  /// If `null` then this editor instantiates a new ScrollController.
-  ///
-  /// Scroll controller must not be `null` if [scrollable] is set to `false`.
+  /// If `null` and [scrollable] is `true` then this editor instantiates a
+  /// new ScrollController
   final ScrollController? scrollController;
 
   /// Whether this editor should create a scrollable container for its content.
@@ -124,9 +120,6 @@ class FleatherEditor extends StatefulWidget {
   /// When set to `false` the editor always expands to fit the entire content
   /// of the document and should normally be placed as a child of another
   /// scrollable widget, otherwise the content may be clipped.
-  ///
-  /// The [scrollController] property must not be `null` when this is set to
-  /// `false`.
   ///
   /// Set to `true` by default.
   final bool scrollable;
@@ -285,36 +278,45 @@ class FleatherEditor extends StatefulWidget {
   /// Defaults to [PlainTextClipboardManager]
   final ClipboardManager clipboardManager;
 
+  /// Provide a notifier that indicated whether current content of clipboard
+  /// can be pasted
+  ///
+  /// Defaults to [ClipboardStatusNotifier] or [_WebClipboardStatusNotifier]
+  final ClipboardStatusNotifier? clipboardStatus;
+
   final GlobalKey<EditorState>? editorKey;
 
-  const FleatherEditor({
-    super.key,
-    required this.controller,
-    this.editorKey,
-    this.focusNode,
-    this.scrollController,
-    this.scrollable = true,
-    this.padding = EdgeInsets.zero,
-    this.autofocus = false,
-    this.showCursor = true,
-    this.readOnly = false,
-    this.autocorrect = true,
-    this.enableSuggestions = true,
-    this.enableInteractiveSelection = true,
-    this.minHeight,
-    this.maxHeight,
-    this.maxContentWidth,
-    this.expands = false,
-    this.textCapitalization = TextCapitalization.sentences,
-    this.keyboardAppearance,
-    this.scrollPhysics,
-    this.onLaunchUrl,
-    this.spellCheckConfiguration,
-    this.clipboardManager = const PlainTextClipboardManager(),
-    this.contextMenuBuilder = defaultContextMenuBuilder,
-    this.embedBuilder = defaultFleatherEmbedBuilder,
-    this.linkActionPickerDelegate = defaultLinkActionPickerDelegate,
-  });
+  final TextSelectionControls? textSelectionControls;
+
+  const FleatherEditor(
+      {super.key,
+      required this.controller,
+      this.editorKey,
+      this.focusNode,
+      this.scrollController,
+      this.scrollable = true,
+      this.padding = EdgeInsets.zero,
+      this.autofocus = false,
+      this.showCursor = true,
+      this.readOnly = false,
+      this.autocorrect = true,
+      this.enableSuggestions = true,
+      this.enableInteractiveSelection = true,
+      this.minHeight,
+      this.maxHeight,
+      this.maxContentWidth,
+      this.expands = false,
+      this.textCapitalization = TextCapitalization.sentences,
+      this.keyboardAppearance,
+      this.scrollPhysics,
+      this.onLaunchUrl,
+      this.spellCheckConfiguration,
+      this.clipboardManager = const PlainTextClipboardManager(),
+      this.clipboardStatus,
+      this.contextMenuBuilder = defaultContextMenuBuilder,
+      this.embedBuilder = defaultFleatherEmbedBuilder,
+      this.linkActionPickerDelegate = defaultLinkActionPickerDelegate,
+      this.textSelectionControls});
 
   @override
   State<FleatherEditor> createState() => _FleatherEditorState();
@@ -415,7 +417,8 @@ class _FleatherEditorState extends State<FleatherEditor>
     switch (theme.platform) {
       case TargetPlatform.iOS:
         final cupertinoTheme = CupertinoTheme.of(context);
-        textSelectionControls = cupertinoTextSelectionControls;
+        textSelectionControls =
+            widget.textSelectionControls ?? cupertinoTextSelectionControls;
         paintCursorAboveText = true;
         cursorOpacityAnimates = true;
         cursorColor = selectionTheme.cursorColor ?? cupertinoTheme.primaryColor;
@@ -428,7 +431,8 @@ class _FleatherEditorState extends State<FleatherEditor>
 
       case TargetPlatform.macOS:
         final CupertinoThemeData cupertinoTheme = CupertinoTheme.of(context);
-        textSelectionControls = cupertinoDesktopTextSelectionControls;
+        textSelectionControls = widget.textSelectionControls ??
+            cupertinoDesktopTextSelectionControls;
         paintCursorAboveText = true;
         cursorOpacityAnimates = false;
         cursorColor = selectionTheme.cursorColor ?? cupertinoTheme.primaryColor;
@@ -441,7 +445,8 @@ class _FleatherEditorState extends State<FleatherEditor>
 
       case TargetPlatform.android:
       case TargetPlatform.fuchsia:
-        textSelectionControls = materialTextSelectionControls;
+        textSelectionControls =
+            widget.textSelectionControls ?? materialTextSelectionControls;
         paintCursorAboveText = false;
         cursorOpacityAnimates = false;
         cursorColor = selectionTheme.cursorColor ?? theme.colorScheme.primary;
@@ -451,7 +456,8 @@ class _FleatherEditorState extends State<FleatherEditor>
 
       case TargetPlatform.linux:
       case TargetPlatform.windows:
-        textSelectionControls = desktopTextSelectionControls;
+        textSelectionControls =
+            widget.textSelectionControls ?? desktopTextSelectionControls;
         paintCursorAboveText = false;
         cursorOpacityAnimates = false;
         cursorColor = selectionTheme.cursorColor ?? theme.colorScheme.primary;
@@ -485,6 +491,8 @@ class _FleatherEditorState extends State<FleatherEditor>
       spellCheckConfiguration: widget.spellCheckConfiguration,
       linkActionPickerDelegate: widget.linkActionPickerDelegate,
       clipboardManager: widget.clipboardManager,
+      clipboardStatus: widget.clipboardStatus ??
+          (kIsWeb ? _WebClipboardStatusNotifier() : ClipboardStatusNotifier()),
       // encapsulated fields below
       cursorStyle: CursorStyle(
         color: cursorColor,
@@ -584,6 +592,7 @@ class RawEditor extends StatefulWidget {
     this.scrollPhysics,
     required this.cursorStyle,
     required this.clipboardManager,
+    required this.clipboardStatus,
     this.showSelectionHandles = false,
     this.selectionControls,
     this.onSelectionChanged,
@@ -591,8 +600,7 @@ class RawEditor extends StatefulWidget {
     this.spellCheckConfiguration,
     this.embedBuilder = defaultFleatherEmbedBuilder,
     this.linkActionPickerDelegate = defaultLinkActionPickerDelegate,
-  })  : assert(scrollable || scrollController != null),
-        assert(maxHeight == null || maxHeight > 0),
+  })  : assert(maxHeight == null || maxHeight > 0),
         assert(minHeight == null || minHeight >= 0),
         assert(
           (maxHeight == null) ||
@@ -774,6 +782,8 @@ class RawEditor extends StatefulWidget {
 
   final ClipboardManager clipboardManager;
 
+  final ClipboardStatusNotifier clipboardStatus;
+
   bool get selectionEnabled => enableInteractiveSelection;
 
   @override
@@ -921,8 +931,8 @@ class RawEditorState extends EditorState
   late AnimationController _floatingCursorResetController;
 
   @override
-  final ClipboardStatusNotifier clipboardStatus =
-      kIsWeb ? _WebClipboardStatusNotifier() : ClipboardStatusNotifier();
+  ClipboardStatusNotifier get clipboardStatus => widget.clipboardStatus;
+
   final LayerLink _toolbarLayerLink = LayerLink();
   final LayerLink _startHandleLayerLink = LayerLink();
   final LayerLink _endHandleLayerLink = LayerLink();
@@ -994,6 +1004,7 @@ class RawEditorState extends EditorState
       return false;
     }
 
+    clipboardStatus.update();
     _selectionOverlay!.showToolbar();
     return true;
   }
@@ -1227,6 +1238,7 @@ class RawEditorState extends EditorState
           break;
       }
     }
+    clipboardStatus.update();
   }
 
   /// Cut current selection to clipboard.
@@ -1245,15 +1257,16 @@ class RawEditorState extends EditorState
       bringIntoView(textEditingValue.selection.extent);
       hideToolbar();
     }
+    clipboardStatus.update();
   }
 
   void _setClipboardData() {
     final TextSelection selection = textEditingValue.selection;
     widget.clipboardManager.setData(FleatherClipboardData(
       plainText: selection.textInside(textEditingValue.text),
-      delta: controller.document
-          .toDelta()
-          .slice(selection.baseOffset, selection.extentOffset),
+      delta: controller.document.toDelta().slice(
+          math.min(selection.baseOffset, selection.extentOffset),
+          math.max(selection.baseOffset, selection.extentOffset)),
     ));
   }
 
@@ -1454,8 +1467,6 @@ class RawEditorState extends EditorState
   }
 
   void _didChangeTextEditingValue() {
-    requestKeyboard();
-
     _showCaretOnScreen();
     updateRemoteValueIfNeeded();
     _cursorController.startOrStopCursorTimerIfNeeded(
@@ -1597,16 +1608,9 @@ class RawEditorState extends EditorState
         return;
       }
 
-      final viewport = RenderAbstractViewport.of(renderEditor);
-      final editorOffset = renderEditor.localToGlobal(const Offset(0.0, 0.0),
-          ancestor: viewport);
-      final offsetInViewport = _scrollController.offset + editorOffset.dy;
-
       final offset = renderEditor.getOffsetToRevealCursor(
-        _scrollController.position.viewportDimension,
-        _scrollController.offset,
-        offsetInViewport,
-      );
+          _scrollController.position.viewportDimension,
+          _scrollController.offset);
 
       if (offset != null) {
         if (withAnimation) {
@@ -1685,66 +1689,65 @@ class RawEditorState extends EditorState
     assert(debugCheckHasMediaQuery(context));
     super.build(context); // See AutomaticKeepAliveClientMixin.
 
-    Widget child = CompositedTransformTarget(
-      link: _toolbarLayerLink,
-      child: Semantics(
-        child: _Editor(
-          key: _editorKey,
-          document: widget.controller.document,
-          selection: widget.controller.selection,
-          hasFocus: _hasFocus,
-          cursorController: _cursorController,
-          textDirection: _textDirection,
-          startHandleLayerLink: _startHandleLayerLink,
-          endHandleLayerLink: _endHandleLayerLink,
-          onSelectionChanged: _handleSelectionChanged,
-          padding: widget.padding,
-          maxContentWidth: widget.maxContentWidth,
-          children: _buildChildren(context),
-        ),
-      ),
-    );
+    final Widget child;
 
     if (widget.scrollable) {
-      // Since `SingleChildScrollView` does not implement
-      // `computeDistanceToActualBaseline` it prevents the editor from
-      // providing its baseline metrics. To address this issue we wrap
-      // the scroll view with [BaselineProxy] which mimics the editor's
-      // baseline.
-      // This implies that the first line has no styles applied to it.
-      final baselinePadding =
-          EdgeInsets.only(top: _themeData.paragraph.spacing.top);
-      child = BaselineProxy(
-        textStyle: _themeData.paragraph.style,
-        padding: baselinePadding,
-        child: FleatherSingleChildScrollView(
-          scrollableKey: _scrollableKey,
-          controller: _scrollController,
-          physics: widget.scrollPhysics,
-          viewportBuilder: (_, offset) => CompositedTransformTarget(
-            link: _toolbarLayerLink,
-            child: _Editor(
-              key: _editorKey,
-              offset: offset,
-              document: widget.controller.document,
-              selection: widget.controller.selection,
-              hasFocus: _hasFocus,
-              textDirection: _textDirection,
-              startHandleLayerLink: _startHandleLayerLink,
-              endHandleLayerLink: _endHandleLayerLink,
-              onSelectionChanged: _handleSelectionChanged,
-              padding: widget.padding,
-              maxContentWidth: widget.maxContentWidth,
-              cursorController: _cursorController,
-              children: _buildChildren(context),
-            ),
+      child = Scrollable(
+        key: _scrollableKey,
+        excludeFromSemantics: true,
+        controller: _scrollController,
+        axisDirection: AxisDirection.down,
+        scrollBehavior: ScrollConfiguration.of(context).copyWith(
+          scrollbars: true,
+          overscroll: false,
+        ),
+        physics: widget.scrollPhysics,
+        viewportBuilder: (context, offset) => CompositedTransformTarget(
+          link: _toolbarLayerLink,
+          child: _Editor(
+            key: _editorKey,
+            offset: offset,
+            document: widget.controller.document,
+            selection: widget.controller.selection,
+            hasFocus: _hasFocus,
+            textDirection: _textDirection,
+            startHandleLayerLink: _startHandleLayerLink,
+            endHandleLayerLink: _endHandleLayerLink,
+            onSelectionChanged: _handleSelectionChanged,
+            padding: widget.padding,
+            maxContentWidth: widget.maxContentWidth,
+            cursorController: _cursorController,
+            children: _buildChildren(context),
+          ),
+        ),
+      );
+    } else {
+      child = CompositedTransformTarget(
+        link: _toolbarLayerLink,
+        child: Semantics(
+          child: _Editor(
+            key: _editorKey,
+            offset: ViewportOffset.zero(),
+            document: widget.controller.document,
+            selection: widget.controller.selection,
+            hasFocus: _hasFocus,
+            cursorController: _cursorController,
+            textDirection: _textDirection,
+            startHandleLayerLink: _startHandleLayerLink,
+            endHandleLayerLink: _endHandleLayerLink,
+            onSelectionChanged: _handleSelectionChanged,
+            padding: widget.padding,
+            maxContentWidth: widget.maxContentWidth,
+            children: _buildChildren(context),
           ),
         ),
       );
     }
 
-    final constraints = widget.expands
-        ? const BoxConstraints.expand()
+    final constraints = widget.scrollable
+        ? widget.expands
+            ? const BoxConstraints.expand()
+            : const BoxConstraints.expand().copyWith(minHeight: 0)
         : BoxConstraints(
             minHeight: widget.minHeight ?? 0.0,
             maxHeight: widget.maxHeight ?? double.infinity);
@@ -1758,7 +1761,7 @@ class RawEditorState extends EditorState
           child: Focus(
             focusNode: effectiveFocusNode,
             child: FleatherKeyboardListener(
-              child: Container(
+              child: ConstrainedBox(
                 constraints: constraints,
                 child: child,
               ),
@@ -2079,12 +2082,10 @@ class RawEditorState extends EditorState
   }) {
     // If editor is scrollable, the editing region is only the viewport
     // otherwise use editor as editing region
-    final viewport = RenderAbstractViewport.maybeOf(renderEditor);
-    final visualSizeRenderer = (viewport ?? renderEditor) as RenderBox;
+    final paintOffset = renderEditor.paintOffset;
     final Rect editingRegion = Rect.fromPoints(
-      visualSizeRenderer.localToGlobal(Offset.zero),
-      visualSizeRenderer
-          .localToGlobal(visualSizeRenderer.size.bottomRight(Offset.zero)),
+      renderEditor.localToGlobal(Offset.zero),
+      renderEditor.localToGlobal(renderEditor.size.bottomRight(Offset.zero)),
     );
 
     if (editingRegion.left.isNaN ||
@@ -2093,29 +2094,23 @@ class RawEditorState extends EditorState
         editingRegion.bottom.isNaN) {
       return const TextSelectionToolbarAnchors(primaryAnchor: Offset.zero);
     }
-
+    final viewportAdjustedBasePointDy =
+        selectionEndpoints.first.point.dy + paintOffset.dy;
+    final viewportAdjustedEndPointDy =
+        selectionEndpoints.last.point.dy + paintOffset.dy;
     final bool isMultiline =
-        selectionEndpoints.last.point.dy - selectionEndpoints.first.point.dy >
+        viewportAdjustedEndPointDy - viewportAdjustedBasePointDy >
             endGlyphHeight / 2;
 
     final Rect selectionRect = Rect.fromLTRB(
       isMultiline
           ? editingRegion.left
-          : editingRegion.left +
-              selectionEndpoints.first.point.dx +
-              renderEditor.paintOffset.dx,
-      editingRegion.top +
-          selectionEndpoints.first.point.dy +
-          renderEditor.paintOffset.dy -
-          startGlyphHeight,
+          : editingRegion.left + selectionEndpoints.first.point.dx,
+      editingRegion.top + viewportAdjustedBasePointDy - startGlyphHeight,
       isMultiline
           ? editingRegion.right
-          : editingRegion.left +
-              selectionEndpoints.last.point.dx +
-              renderEditor.paintOffset.dx,
-      editingRegion.top +
-          selectionEndpoints.last.point.dy +
-          renderEditor.paintOffset.dy,
+          : editingRegion.left + selectionEndpoints.last.point.dx,
+      editingRegion.top + viewportAdjustedEndPointDy,
     );
 
     return TextSelectionToolbarAnchors(
@@ -2163,7 +2158,7 @@ class _Editor extends MultiChildRenderObjectWidget {
   const _Editor({
     required Key super.key,
     required super.children,
-    this.offset,
+    required this.offset,
     required this.document,
     required this.textDirection,
     required this.hasFocus,
@@ -2176,7 +2171,7 @@ class _Editor extends MultiChildRenderObjectWidget {
     this.maxContentWidth,
   });
 
-  final ViewportOffset? offset;
+  final ViewportOffset offset;
   final ParchmentDocument document;
   final TextDirection textDirection;
   final bool hasFocus;

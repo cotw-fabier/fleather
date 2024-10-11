@@ -5,8 +5,8 @@ import 'package:fleather/fleather.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:parchment_delta/parchment_delta.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
@@ -14,27 +14,35 @@ void main() {
 }
 
 class FleatherApp extends StatelessWidget {
-  const FleatherApp({Key? key}) : super(key: key);
+  const FleatherApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+        localizationsDelegates: const [
+          FleatherLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate
+        ],
+        supportedLocales: FleatherLocalizations.supportedLocales,
         debugShowCheckedModeBanner: false,
         theme: ThemeData.light(),
         darkTheme: ThemeData.dark(),
         title: 'Fleather - rich-text editor for Flutter',
-        home: HomePage(),
+        home: const HomePage(),
       );
 }
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  const HomePage({super.key});
 
   @override
-  _HomePageState createState() => _HomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
   final FocusNode _focusNode = FocusNode();
+  final GlobalKey<EditorState> _editorKey = GlobalKey();
   FleatherController? _controller;
 
   @override
@@ -66,7 +74,9 @@ class _HomePageState extends State<HomePage> {
       );
       _controller = FleatherController(document: doc);
     } catch (err, st) {
-      print('Cannot read welcome.json: $err\n$st');
+      if (kDebugMode) {
+        print('Cannot read welcome.json: $err\n$st');
+      }
       _controller = FleatherController();
     }
     setState(() {});
@@ -75,7 +85,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(elevation: 0, title: Text('Fleather Demo')),
+      appBar: AppBar(elevation: 0, title: const Text('Fleather Demo')),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final picker = ImagePicker();
@@ -99,18 +109,20 @@ class _HomePageState extends State<HomePage> {
             );
           }
         },
-        child: Icon(Icons.add_a_photo),
+        child: const Icon(Icons.add_a_photo),
       ),
       body: _controller == null
-          ? Center(child: const CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                FleatherToolbar.basic(controller: _controller!),
+                FleatherToolbar.basic(
+                    controller: _controller!, editorKey: _editorKey),
                 Divider(height: 1, thickness: 1, color: Colors.grey.shade200),
                 Expanded(
                   child: FleatherEditor(
                     controller: _controller!,
                     focusNode: _focusNode,
+                    editorKey: _editorKey,
                     padding: EdgeInsets.only(
                       left: 16,
                       right: 16,
@@ -173,8 +185,8 @@ class _HomePageState extends State<HomePage> {
   void _launchUrl(String? url) async {
     if (url == null) return;
     final uri = Uri.parse(url);
-    final _canLaunch = await canLaunchUrl(uri);
-    if (_canLaunch) {
+    final canLaunch = await canLaunchUrl(uri);
+    if (canLaunch) {
       await launchUrl(uri);
     }
   }

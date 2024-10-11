@@ -1,3 +1,29 @@
+## 1.19.0
+
+* Improve performance when handling long documents
+* Add translations for Persian
+* Ability to cherrypick autoformats natively available
+* Add support for indentation in blocks in Markdow codec
+* [Fix] Autoformat cannot be undone on iOS
+
+## 1.18.0
+
+* Add the ability to use custom `TextSelectionControls`
+* Add foundations for localization
+* Add translations for French
+* Add clear method on controller
+* Improve performance by using repaint boundary
+* Fix hit test issue when scrolled
+* Fix copy issue when selection is inverted
+
+## 1.17.0
+
+* Fleather manages the viewport
+* Add ability to provide custom clipboard status notifier
+* Fix editor requests keyboard and focus when checklist toggled
+
+Behavior for `scrollable` and `expand` changed. Check https://github.com/fleather-editor/fleather/pull/338#issuecomment-2212484545;
+
 ## 1.16.0
 
 * Inline Markdown shortcuts

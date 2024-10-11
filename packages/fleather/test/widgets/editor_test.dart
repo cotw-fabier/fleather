@@ -1,14 +1,13 @@
 import 'package:fleather/fleather.dart';
 import 'package:fleather/src/services/spell_check_suggestions_toolbar.dart';
+import 'package:fleather/src/widgets/checkbox.dart';
 import 'package:fleather/src/widgets/keyboard_listener.dart';
-import 'package:fleather/src/widgets/single_child_scroll_view.dart';
 import 'package:fleather/src/widgets/text_selection.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:parchment_delta/parchment_delta.dart';
 
 import '../testing.dart';
 
@@ -42,16 +41,16 @@ void main() {
       final endpoint =
           renderEditor.getEndpointsForSelection(renderEditor.selection);
       expect(
-          tester
-              .getRect(find.byType(FleatherEditor))
-              .contains(renderEditor.localToGlobal(endpoint[0].point)),
+          tester.getRect(find.byType(FleatherEditor)).contains(
+              renderEditor.localToGlobal(endpoint[0].point) +
+                  renderEditor.paintOffset),
           isTrue);
       tester.view.viewInsets = const FakeViewPadding(bottom: 200);
       await tester.pump();
       expect(
-          tester
-              .getRect(find.byType(FleatherEditor))
-              .contains(renderEditor.localToGlobal(endpoint[0].point)),
+          tester.getRect(find.byType(FleatherEditor)).contains(
+              renderEditor.localToGlobal(endpoint[0].point) +
+                  renderEditor.paintOffset),
           isTrue);
       tester.view.viewInsets = FakeViewPadding.zero;
     });
@@ -65,21 +64,22 @@ void main() {
         ..insert('\n');
       final controller =
           FleatherController(document: ParchmentDocument.fromDelta(delta));
+      final embedHeight =
+          (tester.view.physicalSize / tester.view.devicePixelRatio).height *
+              1.5;
       final editor = MaterialApp(
         home: Scaffold(
           body: Column(
             children: [
               Expanded(
-                  child: FleatherEditor(
-                controller: controller,
-                embedBuilder: (context, node) => SizedBox(
-                  width: 100,
-                  height:
-                      (tester.view.physicalSize / tester.view.devicePixelRatio)
-                              .height *
-                          1.5,
+                child: FleatherEditor(
+                  controller: controller,
+                  embedBuilder: (context, node) => SizedBox(
+                    width: 100,
+                    height: embedHeight,
+                  ),
                 ),
-              )),
+              ),
             ],
           ),
         ),
@@ -89,19 +89,68 @@ void main() {
           tester.getBottomRight(find.byType(RawEditor)) - const Offset(1, 1));
       await tester.pumpAndSettle();
 
-      final scrollController = tester
-          .widget<FleatherSingleChildScrollView>(
-              find.byType(FleatherSingleChildScrollView))
-          .controller;
-      double scrollOffset = scrollController.offset;
+      final renderEditor =
+          tester.state<EditorState>(find.byType(RawEditor)).renderEditor;
+      var scrollOffset = -renderEditor.paintOffset.dy;
       tester.view.viewInsets = const FakeViewPadding(bottom: 20);
       await tester.pump();
-      expect(scrollController.offset > scrollOffset, isTrue);
-      scrollOffset = scrollController.offset;
+      expect(-renderEditor.paintOffset.dy > scrollOffset, isTrue);
+      scrollOffset = -renderEditor.paintOffset.dy;
       tester.view.viewInsets = const FakeViewPadding(bottom: 40);
       await tester.pump();
-      expect(scrollController.offset > scrollOffset, isTrue);
+      expect(-renderEditor.paintOffset.dy > scrollOffset, isTrue);
       tester.view.viewInsets = FakeViewPadding.zero;
+    });
+
+    testWidgets('Allows children to capture events when scrolled',
+        (tester) async {
+      Delta generateDelta({required bool withBoxChecked}) {
+        var delta = Delta();
+        List.generate(20, (_) => delta.insert('Test\n'));
+        return delta
+          ..insert('\n')
+          ..insert('some check box')
+          ..insert('\n', {'block': 'cl', 'checked': withBoxChecked});
+      }
+
+      final delta = generateDelta(withBoxChecked: false);
+      final controller =
+          FleatherController(document: ParchmentDocument.fromDelta(delta));
+      final embedHeight =
+          (tester.view.physicalSize / tester.view.devicePixelRatio).height *
+              1.5;
+      final scrollController = ScrollController();
+      final editor = MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              Expanded(
+                child: FleatherEditor(
+                  controller: controller,
+                  scrollController: scrollController,
+                  embedBuilder: (context, node) => SizedBox(
+                    width: 100,
+                    height: embedHeight,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpWidget(editor);
+      final renderEditor =
+          tester.state<EditorState>(find.byType(RawEditor)).renderEditor;
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final checkBox = find.byType(FleatherCheckbox);
+      expect(checkBox, findsOneWidget);
+      await tester.tapAt(tester.getCenter(checkBox) + renderEditor.paintOffset);
+      await tester.pumpAndSettle();
+      tester.binding.scheduleWarmUpFrame();
+      await tester.pumpAndSettle();
+      expect(
+          controller.document.toDelta(), generateDelta(withBoxChecked: true));
     });
 
     testWidgets('Keep selectiontoolbar with editor bounds', (tester) async {
@@ -164,6 +213,15 @@ void main() {
       final p = tester.widget(find.byType(RichText).first) as RichText;
       final text = p.text as TextSpan;
       expect(text.children!.first.style!.color, Colors.red);
+    });
+
+    testWidgets('changes to controller does not request keyboard',
+        (tester) async {
+      final editor = EditorSandBox(tester: tester);
+      await editor.pump();
+      await editor.updateSelection(base: 0, extent: 3);
+      await tester.pump();
+      expect(editor.focusNode.hasFocus, false);
     });
 
     testWidgets('collapses selection when unfocused', (tester) async {
@@ -284,6 +342,35 @@ void main() {
       final RawEditorState state =
           tester.state<RawEditorState>(find.byType(RawEditor));
       await editor.updateSelection(base: 3, extent: 6);
+      state.showToolbar(createIfNull: true);
+      await tester.pump();
+      final finder = find.text('Copy');
+      await tester.tap(finder);
+      await tester.pumpAndSettle(throttleDuration);
+      expect(sentData?.plainText, 't T');
+      expect(sentData?.delta, Delta()..insert('t T'));
+    });
+
+    testWidgets(
+        'Copy sends correct data to clipboard manager when selection extents are inverted',
+        (tester) async {
+      prepareClipboard();
+      FleatherClipboardData? sentData;
+      final editor = EditorSandBox(
+        tester: tester,
+        document: ParchmentDocument.fromJson([
+          {'insert': 'Test Text\n'}
+        ]),
+        autofocus: true,
+        clipboardManager: FleatherCustomClipboardManager(
+          getData: () => throw UnimplementedError(),
+          setData: (data) async => sentData = data,
+        ),
+      );
+      await editor.pump();
+      final RawEditorState state =
+          tester.state<RawEditorState>(find.byType(RawEditor));
+      await editor.updateSelection(base: 6, extent: 3);
       state.showToolbar(createIfNull: true);
       await tester.pump();
       final finder = find.text('Copy');
@@ -600,7 +687,7 @@ void main() {
           {'insert': 'Test test\n'}
         ]);
         final editor = EditorSandBox(tester: tester, document: document);
-        await editor.pump();
+        await editor.pumpAndTap();
         await editor.updateSelection(base: 1, extent: 2);
         await tester.sendKeyDownEvent(LogicalKeyboardKey.shift);
         final gesture = await tester.startGesture(
